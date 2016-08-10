@@ -4,6 +4,9 @@
     <Filter Include="obse">
       <UniqueIdentifier>{19e0d1ad-884b-4cb8-b392-393ac908153f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="obse_common">
+      <UniqueIdentifier>{0c7c98a1-5102-4184-bba1-586bef8f400b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\obse\obse\GameActorValues.cpp">
@@ -49,6 +52,9 @@
       <Filter>obse</Filter>
     </ClCompile>
     <ClCompile Include="obsilver.cpp" />
+    <ClCompile Include="..\obse\obse_common\SafeWrite.cpp">
+      <Filter>obse_common</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\obse\obse\GameActorValues.h">
@@ -98,6 +104,9 @@
     </ClInclude>
     <ClInclude Include="..\obse\obse\Utilities.h">
       <Filter>obse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\obse\obse_common\SafeWrite.h">
+      <Filter>obse_common</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -6,6 +6,7 @@
 //#include "obse/Script.h"
 //#include "obse/GameObjects.h"
 //#include "obse/Utilities.h"
+#include "obse_common/SafeWrite.h"
 
 #include <string>
 #include <windows.h>
@@ -16,7 +17,7 @@
 
 #define MAX_SECTION 32767
 #define MAX_FILENAME 128
-#define MAX_BATCHES 20
+#define MAX_BATCHES 30
 #define MAX_STRING 255
 
 struct BatchData{
@@ -27,6 +28,10 @@ struct BatchData{
 
 static HMODULE g_hModule = NULL;
 static HANDLE g_MainLoopThread = NULL;
+
+//NOTE(adm244): addresses for hooks (oblivion 1.2.416)
+static const UInt32 mainloop_hook_patch_address = 0x0040F1A3;
+static const UInt32 mainloop_hook_return_address = 0x0040F1A8;
 
 static BatchData batches[MAX_BATCHES];
 static int batchnum;
@@ -126,6 +131,73 @@ bool main_init()
   return(TRUE);
 }
 
+static void mainloop()
+{
+  if( main_loop_running ){
+    if( GetKeyPressed(key_disable) ){
+      if( keys_active ){
+        QueueUIMessage_2("[INFO] Commands disabled", 5, NULL, NULL);
+        //_MESSAGE("[INFO] Commands disabled");
+      } else{
+        QueueUIMessage_2("[INFO] Commands enabled", 5, NULL, NULL);
+        //_MESSAGE("[INFO] Commands enabled");
+      }
+      keys_active = !keys_active;
+    }
+      
+    if( keys_active ){
+      for( int i = 0; i < batchnum; ++i ){
+        if( GetKeyPressed(batches[i].key) ){
+          if( !batches[i].enabled ){
+            continue;
+          }
+          batches[i].enabled = FALSE;
+            
+          char str[MAX_STRING];
+          sprintf(str, "RunBatchScript \"%s.txt\"\0", batches[i].filename);
+          g_ConsoleInterface->RunScriptLine(str);
+
+          char msg[MAX_STRING];
+          sprintf(msg, "!%s was successeful", batches[i].filename);
+          QueueUIMessage_2(msg, 5, NULL, NULL);
+          _MESSAGE(msg);
+        } else{
+          batches[i].enabled = TRUE;
+        }
+      }
+    }
+  }
+}
+
+static __declspec(naked) void mainloop_hook()
+{
+  /*
+  static const UInt32 kMainLoopHookPatchAddr = 0x0040F19D;
+  static const UInt32 kMainLoopHookRetnAddr = 0x0040F1A3;
+
+  static __declspec(naked) void MainLoopHook(void)
+  {
+	  __asm
+	  {
+		  pushad
+		  call	HandleMainLoopHook
+		  popad
+		  mov		eax, [edx + 0x280]
+		  jmp		[kMainLoopHookRetnAddr]
+	  }
+  }
+  */
+
+  __asm{
+    pushad
+    call mainloop
+    popad
+    mov ecx, [eax]
+    mov edx, [ecx + 0x0C]
+    jmp [mainloop_hook_return_address]
+  }
+}
+
 DWORD WINAPI main_loop(LPVOID lpParam)
 {
   while( !main_loop_should_close ){
@@ -153,6 +225,32 @@ DWORD WINAPI main_loop(LPVOID lpParam)
             sprintf(str, "RunBatchScript \"%s.txt\"\0", batches[i].filename);
             //sprintf(str, "bat \"%s.txt\"", batches[i].filename);
 
+            // 0x009868DD or 0x00986774
+            //ExecuteConsoleCommand(char *line, char *cmd, int16 unk16 = 3);
+            // for "bat <filename>" it will look like:
+            // ExecuteConsoleCommand("bat <filename>", "bat", 3);
+            /*{
+              UInt8 scriptObjBuf[sizeof(Script)];
+              Script *tempScriptObj = (Script *)scriptObjBuf;
+
+              tempScriptObj->Constructor();
+              tempScriptObj->MarkAsTemporary();
+              ThisStdCall(0x009868DD, tempScriptObj, str, "RunBatchScript", 3);
+              tempScriptObj->StaticDestructor();
+            }*/
+
+
+            //DEFINE_MEMBER_FN(Execute, bool, kScript_ExecuteFnAddr, TESObjectREFR* thisObj, ScriptEventList* eventList, TESObjectREFR* containingObj, bool arg3);
+            /*{
+              UInt8 scriptObjBuf[sizeof(Script)];
+              Script *tempScriptObj = (Script *)scriptObjBuf;
+
+              tempScriptObj->Constructor();
+              tempScriptObj->_Execute_GetPtr();
+              tempScriptObj->StaticDestructor();
+            }*/
+
+
             //0x0098629E - console bat?
             //push mask and actual string on stack then call it?
             //return to?
@@ -163,6 +261,16 @@ DWORD WINAPI main_loop(LPVOID lpParam)
             // obse people, I HAVE questions...
             g_ConsoleInterface->RunScriptLine(str);
             //QueueUIMessage(str, 0, 0, 5);
+
+            //0x00585F40
+            //this, char *line
+            /*UInt8 scriptObjBuf[sizeof(Script)];
+            Script *tempScriptObj = (Script *)scriptObjBuf;
+
+            tempScriptObj->Constructor();
+            tempScriptObj->MarkAsTemporary();
+            ThisStdCall(0x00585F40, tempScriptObj, "bat obspawn.txt");
+            tempScriptObj->StaticDestructor();*/
             
             /*
             // create a Script object
@@ -189,7 +297,7 @@ DWORD WINAPI main_loop(LPVOID lpParam)
               //scriptObj->Constructor();
               //scriptObj->MarkAsTemporary();
               //scriptObj->SetText(str);
-              //scriptObj->SetText("RunBatchScript \"obgold.txt\"");
+              //scriptObj->SetText(str);
               //scriptObj->CompileAndRun(*((void**)scriptState), 1, NULL);
               //scriptObj->CompileAndRun(NULL, 0, NULL);
               //scriptObj->StaticDestructor();
@@ -223,7 +331,7 @@ DWORD WINAPI main_loop(LPVOID lpParam)
       }
     }
     
-    //Sleep(250);
+    //Sleep(150);
   }
   
   _MESSAGE("Thread exited");
@@ -248,6 +356,10 @@ void MessageHandler(OBSEMessagingInterface::Message* msg)
       _MESSAGE("MainLoop activation");
       main_loop_running = TRUE;
       
+      //g_ConsoleInterface->RunScriptLine("RunBatchScript \"obspawn.txt\"");
+      //g_ConsoleInterface->RunScriptLine("RunBatchScript \"obspawn.txt\"");
+      //g_ConsoleInterface->RunScriptLine("RunBatchScript \"obspawn.txt\"");
+
       if( not_initialized ){
         char msg[MAX_STRING];
         
@@ -256,6 +368,9 @@ void MessageHandler(OBSEMessagingInterface::Message* msg)
         
         sprintf(msg, "[INFO] %d batch files initialized", batchnum);
         QueueUIMessage_2(msg, 5, NULL, NULL);
+
+        //g_MainLoopThread = CreateThread(NULL, 0, main_loop, NULL, 0, NULL);
+        //_MESSAGE("Thread created");
         
         not_initialized = FALSE;
       }
@@ -326,8 +441,12 @@ extern "C" bool OBSEPlugin_Load(const OBSEInterface * obse)
     return(FALSE);
   }
   
-  g_MainLoopThread = CreateThread(NULL, 0, main_loop, NULL, 0, NULL);
-  _MESSAGE("Thread created");
+  //g_MainLoopThread = CreateThread(NULL, 0, main_loop, NULL, 0, NULL);
+  //_MESSAGE("Thread created");
+
+  _MESSAGE("Patching Oblivion.");
+  SafeWrite8(mainloop_hook_patch_address - 1, 0x90); // nop (for debugger friendliness)
+	WriteRelJump(mainloop_hook_patch_address,(UInt32)&mainloop_hook);
   
   _MESSAGE("Success");
   return(TRUE);
@@ -346,9 +465,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved)
     case DLL_PROCESS_DETACH:
     {
       //NOTE(adm244): might be a bad idea, haven't really worked with threads yet
-      if( g_MainLoopThread ){
+      /*if( g_MainLoopThread ){
         CloseHandle(g_MainLoopThread);
-      }
+      }*/
       break;
     }
   }

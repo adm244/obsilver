@@ -1,6 +1,10 @@
 ##ObSilver for Oblivion##
 
-**Current version: 0.1**
+**Current version: 0.2**
+
+### New: ###
+
+- **MAJOR**: Oblivion crash should be fixed now
 
 ### Description: ###
 
@@ -8,4 +12,4 @@ This plugin lets you bind your oblivion bat files to a specific keys on a keyboa
 
 ### Known Bugs: ###
 
-- **MAJOR**: Oblivion crashes when the command that spawns something is executed (no idea why it's happening)
+- None

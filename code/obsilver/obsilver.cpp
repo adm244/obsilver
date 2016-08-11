@@ -1,15 +1,45 @@
-//NOTE(adm244): the code is in a terrible state (thanks to obse and oop crap)
-// don't want to have anything to do with it more than it's necessary to make this thing work
+/*
+THIS LICENCE TEXT IS ONLY APPLICABLE FOR THIS SPECIFIC SOURCE FILE ONLY.
+BE WARE THAT OBSE ITSELF MIGHT USE A DIFFERENT KIND OF LICENSING.
 
-#include "obse/PluginAPI.h"
-#include "obse/GameAPI.h"
-//#include "obse/Script.h"
-//#include "obse/GameObjects.h"
-//#include "obse/Utilities.h"
-#include "obse_common/SafeWrite.h"
+This is free and unencumbered software released into the public domain.
+
+Anyone is free to copy, modify, publish, use, compile, sell, or
+distribute this software, either in source code form or as a compiled
+binary, for any purpose, commercial or non-commercial, and by any
+means.
+
+In jurisdictions that recognize copyright laws, the author or authors
+of this software dedicate any and all copyright interest in the
+software to the public domain. We make this dedication for the benefit
+of the public at large and to the detriment of our heirs and
+successors. We intend this dedication to be an overt act of
+relinquishment in perpetuity of all present and future rights to this
+software under copyright law.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+*/
+
+//FIX(adm244): replace std::string with c_string
+
+//TODO(adm244): implement cooldown system (by timer or activations count)
+//TODO(adm244): implement a set chance for each command to activate
 
 #include <string>
 #include <windows.h>
+
+#include "obse/PluginAPI.h"
+#include "obse/GameAPI.h"
+#include "obse_common/SafeWrite.h"
+
+#define byte BYTE
+#define internal static
 
 #define SCRIPTNAME "obsilver"
 #define CONFIGFILE "obsilver.ini"
@@ -23,44 +53,44 @@
 struct BatchData{
   char filename[MAX_FILENAME];
   int key;
-  BOOL enabled;
+  bool enabled;
 };
 
-static HMODULE g_hModule = NULL;
-static HANDLE g_MainLoopThread = NULL;
+internal HMODULE g_hModule = NULL;
+internal PluginHandle g_pluginHandle = kPluginHandle_Invalid;
+
+internal IDebugLog gLog(LOGFILE);
+internal OBSEConsoleInterface *g_ConsoleInterface = NULL;
+internal OBSEScriptInterface *g_ScriptInterface = NULL;
+internal OBSEArrayVarInterface *g_ArrayVarInterface = NULL;
 
 //NOTE(adm244): addresses for hooks (oblivion 1.2.416)
-static const UInt32 mainloop_hook_patch_address = 0x0040F1A3;
-static const UInt32 mainloop_hook_return_address = 0x0040F1A8;
+internal const UInt32 mainloop_hook_patch_address = 0x0040F1A3;
+internal const UInt32 mainloop_hook_return_address = 0x0040F1A8;
 
-static BatchData batches[MAX_BATCHES];
-static int batchnum;
+internal BatchData batches[MAX_BATCHES];
+internal int batchnum;
 
-static BOOL not_initialized = TRUE;
-static BOOL main_loop_running = FALSE;
-static BOOL main_loop_should_close = FALSE;
-static BOOL keys_active;
-static BYTE key_disable;
+internal bool not_initialized;
+internal bool main_loop_running;
+internal bool keys_active;
+internal byte key_disable;
 
-IDebugLog gLog(LOGFILE);
-
-PluginHandle g_pluginHandle = kPluginHandle_Invalid;
-OBSEConsoleInterface *g_ConsoleInterface = NULL;
-OBSEScriptInterface *g_ScriptInterface = NULL;
-OBSEArrayVarInterface *g_ArrayVarInterface = NULL;
-
-bool GetKeyPressed(BYTE key)
+//NOTE(adm244): returns whenever key is pressed or not
+bool GetKeyPressed(byte key)
 {
-  SHORT keystate = (SHORT)GetAsyncKeyState(key);
+  short keystate = (short)GetAsyncKeyState(key);
   return( (keystate & 0x8000) > 0 );
 }
 
+//NOTE(adm244): retrieves folder path from full path
 std::string GetPathFromFilename(std::string filename)
 {
   return filename.substr(0, filename.rfind("\\") + 1);
 }
 
-DWORD IniReadInt(char *inifile, char *section, char *param, DWORD def)
+//NOTE(adm244): retrieves an integer value from specified section and key of ini file
+int IniReadInt(char *inifile, char *section, char *param, int def)
 {
   char curdir[MAX_PATH];
   GetModuleFileNameA(g_hModule, curdir, sizeof(curdir));
@@ -69,7 +99,7 @@ DWORD IniReadInt(char *inifile, char *section, char *param, DWORD def)
 }
 
 //NOTE(adm244): retrieves all key-value pairs from specified section of ini file and stores it in buffer
-DWORD IniReadSection(char *inifile, char *section, char *buffer, DWORD bufsize)
+int IniReadSection(char *inifile, char *section, char *buffer, int bufsize)
 {
   char curdir[MAX_PATH];
   GetModuleFileNameA(g_hModule, curdir, sizeof(curdir));
@@ -78,81 +108,86 @@ DWORD IniReadSection(char *inifile, char *section, char *buffer, DWORD bufsize)
 }
 
 //NOTE(adm244): loads a list of batch files and keys that activate them
-BOOL InitBatchFiles(BatchData *batches, int *num)
+bool InitBatchFiles(BatchData *batches, int *num)
 {
   char buf[MAX_SECTION];
   char *str = buf;
   int index = 0;
-  
+
   IniReadSection(CONFIGFILE, "batch", buf, MAX_SECTION);
-  
-  while( TRUE ){
+
+  _MESSAGE("Loading batch files...");
+
+  while( true ){
     char *p = strrchr(str, '=');
-    
+
     if( p && (index < MAX_BATCHES) ){
       char *endptr;
       *p++ = '\0';
-      
+
       strcpy(batches[index].filename, str);
       batches[index].key = (int)strtol(p, &endptr, 0);
-      batches[index].enabled = TRUE;
-      
+      batches[index].enabled = true;
+
       _MESSAGE("%s activates with 0x%02X", batches[index].filename, batches[index].key);
-      
+
       str = strchr(p, '\0');
       str++;
-      
+
       index++;
     } else{
       break;
     }
   }
-  
+
   *num = index;
   return(index > 0);
 }
 
+//NOTE(adm244): initializes plugin data
 bool main_init()
 {
-  BOOL bres = InitBatchFiles(batches, &batchnum);
-  
-  keys_active = TRUE;
-  key_disable = IniReadInt(CONFIGFILE, "keys", "iKeyToggle", 0x24);
-  
-  _MESSAGE("[INFO] %s script launched", SCRIPTNAME);
-  
-  if( bres ){
-    _MESSAGE("[INFO] %d batch files initialized", batchnum);
+  bool bresult = InitBatchFiles(batches, &batchnum);
+
+  if( bresult ){
+    _MESSAGE("%d batch files initialized", batchnum);
   } else{
-    _ERROR("[ERROR] Batch files failed to initialize");
-    return(FALSE);
+    _ERROR("Batch files failed to initialize");
+    return(false);
   }
-  
+
+  not_initialized = true;
+  main_loop_running = false;
+
+  keys_active = true;
+  key_disable = IniReadInt(CONFIGFILE, "keys", "iKeyToggle", 0x24);
+
   return(TRUE);
 }
 
+//NOTE(adm244): "oblivion" calls this function every frame if window is active
 static void mainloop()
 {
   if( main_loop_running ){
     if( GetKeyPressed(key_disable) ){
       if( keys_active ){
         QueueUIMessage_2("[INFO] Commands disabled", 5, NULL, NULL);
-        //_MESSAGE("[INFO] Commands disabled");
+        _MESSAGE("[INFO] Commands disabled");
       } else{
         QueueUIMessage_2("[INFO] Commands enabled", 5, NULL, NULL);
-        //_MESSAGE("[INFO] Commands enabled");
+        _MESSAGE("[INFO] Commands enabled");
       }
       keys_active = !keys_active;
     }
-      
+
     if( keys_active ){
       for( int i = 0; i < batchnum; ++i ){
         if( GetKeyPressed(batches[i].key) ){
           if( !batches[i].enabled ){
             continue;
           }
-          batches[i].enabled = FALSE;
-            
+          batches[i].enabled = false;
+
           char str[MAX_STRING];
           sprintf(str, "RunBatchScript \"%s.txt\"\0", batches[i].filename);
           g_ConsoleInterface->RunScriptLine(str);
@@ -162,222 +197,60 @@ static void mainloop()
           QueueUIMessage_2(msg, 5, NULL, NULL);
           _MESSAGE(msg);
         } else{
-          batches[i].enabled = TRUE;
+          batches[i].enabled = true;
         }
       }
     }
   }
 }
 
+//NOTE(adm244): these instructions will be executed in the oblivion mainloop
+// right after obse executes it's own "mainloop"
 static __declspec(naked) void mainloop_hook()
 {
-  /*
-  static const UInt32 kMainLoopHookPatchAddr = 0x0040F19D;
-  static const UInt32 kMainLoopHookRetnAddr = 0x0040F1A3;
-
-  static __declspec(naked) void MainLoopHook(void)
-  {
-	  __asm
-	  {
-		  pushad
-		  call	HandleMainLoopHook
-		  popad
-		  mov		eax, [edx + 0x280]
-		  jmp		[kMainLoopHookRetnAddr]
-	  }
-  }
-  */
-
   __asm{
     pushad
     call mainloop
     popad
+    
+    //NOTE(adm244): original instructions
     mov ecx, [eax]
     mov edx, [ecx + 0x0C]
+    
     jmp [mainloop_hook_return_address]
   }
 }
 
-DWORD WINAPI main_loop(LPVOID lpParam)
-{
-  while( !main_loop_should_close ){
-    if( main_loop_running ){
-      if( GetKeyPressed(key_disable) ){
-        if( keys_active ){
-          QueueUIMessage_2("[INFO] Commands disabled", 5, NULL, NULL);
-          //_MESSAGE("[INFO] Commands disabled");
-        } else{
-          QueueUIMessage_2("[INFO] Commands enabled", 5, NULL, NULL);
-          //_MESSAGE("[INFO] Commands enabled");
-        }
-        keys_active = !keys_active;
-      }
-      
-      if( keys_active ){
-        for( int i = 0; i < batchnum; ++i ){
-          if( GetKeyPressed(batches[i].key) ){
-            if( !batches[i].enabled ){
-              continue;
-            }
-            batches[i].enabled = FALSE;
-            
-            char str[MAX_STRING];
-            sprintf(str, "RunBatchScript \"%s.txt\"\0", batches[i].filename);
-            //sprintf(str, "bat \"%s.txt\"", batches[i].filename);
-
-            // 0x009868DD or 0x00986774
-            //ExecuteConsoleCommand(char *line, char *cmd, int16 unk16 = 3);
-            // for "bat <filename>" it will look like:
-            // ExecuteConsoleCommand("bat <filename>", "bat", 3);
-            /*{
-              UInt8 scriptObjBuf[sizeof(Script)];
-              Script *tempScriptObj = (Script *)scriptObjBuf;
-
-              tempScriptObj->Constructor();
-              tempScriptObj->MarkAsTemporary();
-              ThisStdCall(0x009868DD, tempScriptObj, str, "RunBatchScript", 3);
-              tempScriptObj->StaticDestructor();
-            }*/
-
-
-            //DEFINE_MEMBER_FN(Execute, bool, kScript_ExecuteFnAddr, TESObjectREFR* thisObj, ScriptEventList* eventList, TESObjectREFR* containingObj, bool arg3);
-            /*{
-              UInt8 scriptObjBuf[sizeof(Script)];
-              Script *tempScriptObj = (Script *)scriptObjBuf;
-
-              tempScriptObj->Constructor();
-              tempScriptObj->_Execute_GetPtr();
-              tempScriptObj->StaticDestructor();
-            }*/
-
-
-            //0x0098629E - console bat?
-            //push mask and actual string on stack then call it?
-            //return to?
-            //ThisStdCall(UInt32 _f,void* _t)
-            
-            //IMPORTANT(adm244): have no idea why, but this thing crashes Oblivion
-            // every time it tries to execute a command that spawns something (usually on the second try).
-            // obse people, I HAVE questions...
-            g_ConsoleInterface->RunScriptLine(str);
-            //QueueUIMessage(str, 0, 0, 5);
-
-            //0x00585F40
-            //this, char *line
-            /*UInt8 scriptObjBuf[sizeof(Script)];
-            Script *tempScriptObj = (Script *)scriptObjBuf;
-
-            tempScriptObj->Constructor();
-            tempScriptObj->MarkAsTemporary();
-            ThisStdCall(0x00585F40, tempScriptObj, "bat obspawn.txt");
-            tempScriptObj->StaticDestructor();*/
-            
-            /*
-            // create a Script object
-            UInt8	scriptObjBuf[sizeof(Script)];
-            Script	* tempScriptObj = (Script *)scriptObjBuf;
-
-            void	* scriptState = GetGlobalScriptStateObj();
-
-            tempScriptObj->Constructor();
-            tempScriptObj->MarkAsTemporary();
-            tempScriptObj->SetText(buf);
-            bool bResult = tempScriptObj->CompileAndRun(*((void**)scriptState), 1, callingObj);
-            tempScriptObj->StaticDestructor();
-            */
-            
-            //UInt8 scriptObjBuf[sizeof(Script)];
-            //Script *scriptObj = (Script *)scriptObjBuf;
-            
-            //void *scriptState = GetGlobalScriptStateObj();
-            
-            //NOTE(adm244): copied from Commands_Console.cpp of OBSE v21
-            // ### need to add a guard as the state object can be NULL sometimes (no idea why)
-            //if(scriptState && *((void**)scriptState)){
-              //scriptObj->Constructor();
-              //scriptObj->MarkAsTemporary();
-              //scriptObj->SetText(str);
-              //scriptObj->SetText(str);
-              //scriptObj->CompileAndRun(*((void**)scriptState), 1, NULL);
-              //scriptObj->CompileAndRun(NULL, 0, NULL);
-              //scriptObj->StaticDestructor();
-            //}
-            
-            //(* CallFunction)(Script* funcScript, TESObjectREFR* callingObj, TESObjectREFR* container, OBSEArrayVarInterface::Element * result, UInt8 numArgs, ...);
-            
-            //g_ArrayVarInterface::Element elem();
-            //OBSEArrayVarInterface::Element elem;
-            //PlayerCharacter *pc = (*g_thePlayer);
-
-            //TESClass *playerClass = pc->GetPlayerClass();
-            //TESObjectREFR *playerRef = OBLIVION_CAST((void *)playerClass, TESClass, TESObjectREFR);
-
-            //g_ScriptInterface->CallFunction(scriptObj, NULL, NULL, &elem, 1, batches[i].filename);
-            
-            //scriptObj->StaticDestructor();
-            //char msg[MAX_STRING] = "!";
-            //strcat(msg, batches[i].filename);
-            //strcat(msg, " was successeful");
-            
-            char msg[MAX_STRING];
-            sprintf(msg, "!%s was successeful", batches[i].filename);
-            
-            QueueUIMessage_2(msg, 5, NULL, NULL);
-            _MESSAGE(msg);
-          } else{
-            batches[i].enabled = TRUE;
-          }
-        }
-      }
-    }
-    
-    //Sleep(150);
-  }
-  
-  _MESSAGE("Thread exited");
-  return(0);
-}
-
+//NOTE(adm244): handles messages from obse
 void MessageHandler(OBSEMessagingInterface::Message* msg)
 {
   switch(msg->type){
-    case OBSEMessagingInterface::kMessage_ExitGame:
-    case OBSEMessagingInterface::kMessage_ExitGame_Console:{
-      main_loop_should_close = TRUE;
-    } break;
-    
     case OBSEMessagingInterface::kMessage_LoadGame:
     case OBSEMessagingInterface::kMessage_ExitToMainMenu:{
       _MESSAGE("MainLoop deactivation");
-      main_loop_running = FALSE;
+      main_loop_running = false;
     } break;
 
     case OBSEMessagingInterface::kMessage_PostLoadGame:{
       _MESSAGE("MainLoop activation");
-      main_loop_running = TRUE;
-      
-      //g_ConsoleInterface->RunScriptLine("RunBatchScript \"obspawn.txt\"");
-      //g_ConsoleInterface->RunScriptLine("RunBatchScript \"obspawn.txt\"");
-      //g_ConsoleInterface->RunScriptLine("RunBatchScript \"obspawn.txt\"");
+      main_loop_running = true;
 
       if( not_initialized ){
         char msg[MAX_STRING];
-        
+
         sprintf(msg, "[INFO] %s script launched", SCRIPTNAME);
         QueueUIMessage_2(msg, 3, NULL, NULL);
-        
+
         sprintf(msg, "[INFO] %d batch files initialized", batchnum);
         QueueUIMessage_2(msg, 5, NULL, NULL);
 
-        //g_MainLoopThread = CreateThread(NULL, 0, main_loop, NULL, 0, NULL);
-        //_MESSAGE("Thread created");
-        
-        not_initialized = FALSE;
+        not_initialized = false;
       }
     } break;
   }
 }
 
+//NOTE(adm244): obse calls us in here to get the information about our plugin
 extern "C" bool OBSEPlugin_Query(const OBSEInterface * obse, PluginInfo * info)
 {
   _MESSAGE("OBSEPlugin_Query");
@@ -389,45 +262,46 @@ extern "C" bool OBSEPlugin_Query(const OBSEInterface * obse, PluginInfo * info)
   if(!obse->isEditor) {
     if(obse->obseVersion < OBSE_VERSION_INTEGER) {
       _ERROR("OBSE version too old (got %08X expected at least %08X)", obse->obseVersion, OBSE_VERSION_INTEGER);
-      return(FALSE);
+      return(false);
     }
 
 #if OBLIVION
     if(obse->oblivionVersion != OBLIVION_VERSION) {
       _ERROR("incorrect Oblivion version (got %08X need %08X)", obse->oblivionVersion, OBLIVION_VERSION);
-      return(FALSE);
+      return(false);
     }
 #endif
-    
+
     g_ConsoleInterface = (OBSEConsoleInterface *)obse->QueryInterface(kInterface_Console);
     if(!g_ConsoleInterface){
       _ERROR("console interface not found");
-      return(FALSE);
+      return(false);
     }
-    
+
     if(g_ConsoleInterface->version < OBSEConsoleInterface::kVersion){
       _ERROR("incorrect console interface version found (got %08X need %08X)", g_ConsoleInterface->version, OBSEConsoleInterface::kVersion);
       _ERROR("console interface invalid version");
-      return(FALSE);
+      return(false);
     }
-    
+
     g_ScriptInterface = (OBSEScriptInterface *)obse->QueryInterface(kInterface_Script);
     if(!g_ScriptInterface){
       _ERROR("script interface not found");
-      return(FALSE);
+      return(false);
     }
-    
+
     g_ArrayVarInterface = (OBSEArrayVarInterface *)obse->QueryInterface(kInterface_ArrayVar);
     if(!g_ArrayVarInterface){
       _ERROR("arrayvar interface not found");
-      return(FALSE);
+      return(false);
     }
   }
 
   _MESSAGE("Success");
-  return(TRUE);
+  return(true);
 }
 
+//NOTE(adm244): obse calls us in here so we can perform some initializations
 extern "C" bool OBSEPlugin_Load(const OBSEInterface * obse)
 {
   _MESSAGE("OBSEPlugin_Load");
@@ -436,40 +310,29 @@ extern "C" bool OBSEPlugin_Load(const OBSEInterface * obse)
 
   OBSEMessagingInterface *msgIntfc = (OBSEMessagingInterface *)obse->QueryInterface(kInterface_Messaging);
   msgIntfc->RegisterListener(g_pluginHandle, "OBSE", MessageHandler);
-  
-  if( !main_init() ){
-    return(FALSE);
-  }
-  
-  //g_MainLoopThread = CreateThread(NULL, 0, main_loop, NULL, 0, NULL);
-  //_MESSAGE("Thread created");
 
-  _MESSAGE("Patching Oblivion.");
+  if( !main_init() ){
+    return(false);
+  }
+
+  _MESSAGE("Patching Oblivion...");
+  //NOTE(adm244): patching in the oblivion main loop right after obse
   SafeWrite8(mainloop_hook_patch_address - 1, 0x90); // nop (for debugger friendliness)
-	WriteRelJump(mainloop_hook_patch_address,(UInt32)&mainloop_hook);
-  
+  WriteRelJump(mainloop_hook_patch_address, (UInt32)&mainloop_hook);
+
   _MESSAGE("Success");
-  return(TRUE);
+  return(true);
 }
 
+//NOTE(adm244): dll entry point
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved)
 {
-  switch (fdwReason)
-  {
-    case DLL_PROCESS_ATTACH:
-    {
+  switch (fdwReason) {
+    case DLL_PROCESS_ATTACH: {
       g_hModule = hModule;
-      break;
-    }
-    
-    case DLL_PROCESS_DETACH:
-    {
-      //NOTE(adm244): might be a bad idea, haven't really worked with threads yet
-      /*if( g_MainLoopThread ){
-        CloseHandle(g_MainLoopThread);
-      }*/
-      break;
-    }
+    } break;
+    case DLL_PROCESS_DETACH: {
+    } break;
   }
   return(TRUE);
 }

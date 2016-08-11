@@ -54,9 +54,12 @@ struct BatchData{
   char filename[MAX_FILENAME];
   int key;
   bool enabled;
+  bool timeouted;
 };
 
 internal HMODULE g_hModule = NULL;
+internal HANDLE g_Timer = NULL;
+internal HANDLE g_TimerQueue = NULL;
 internal PluginHandle g_pluginHandle = kPluginHandle_Invalid;
 
 internal IDebugLog gLog(LOGFILE);
@@ -128,6 +131,7 @@ bool InitBatchFiles(BatchData *batches, int *num)
       strcpy(batches[index].filename, str);
       batches[index].key = (int)strtol(p, &endptr, 0);
       batches[index].enabled = true;
+      batches[index].timeouted = false;
 
       _MESSAGE("%s activates with 0x%02X", batches[index].filename, batches[index].key);
 
@@ -142,6 +146,17 @@ bool InitBatchFiles(BatchData *batches, int *num)
 
   *num = index;
   return(index > 0);
+}
+
+VOID CALLBACK timer_callback(PVOID lpParam, BOOLEAN TimerOrWaitFired)
+{
+  BatchData *data = (BatchData *)lpParam;
+  
+  data->timeouted = false;
+  
+  char msg[MAX_STRING];
+  sprintf(msg, "!%s enabled", data->filename);
+  QueueUIMessage_2(msg, 5, NULL, NULL);
 }
 
 //NOTE(adm244): initializes plugin data
@@ -182,18 +197,21 @@ static void mainloop()
 
     if( keys_active ){
       for( int i = 0; i < batchnum; ++i ){
-        if( GetKeyPressed(batches[i].key) ){
+        if( !batches[i].timeouted && GetKeyPressed(batches[i].key) ){
           if( !batches[i].enabled ){
             continue;
           }
           batches[i].enabled = false;
+          batches[i].timeouted = true;
+          
+          CreateTimerQueueTimer(&g_Timer, g_TimerQueue, (WAITORTIMERCALLBACK)timer_callback, &batches[i], 180000, 0, 0);
 
           char str[MAX_STRING];
           sprintf(str, "RunBatchScript \"%s.txt\"\0", batches[i].filename);
           g_ConsoleInterface->RunScriptLine(str);
 
           char msg[MAX_STRING];
-          sprintf(msg, "!%s was successeful", batches[i].filename);
+          sprintf(msg, "!%s activated. Timeout for 3 minutes.", batches[i].filename);
           QueueUIMessage_2(msg, 5, NULL, NULL);
           _MESSAGE(msg);
         } else{
@@ -330,6 +348,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved)
   switch (fdwReason) {
     case DLL_PROCESS_ATTACH: {
       g_hModule = hModule;
+      g_TimerQueue = CreateTimerQueue();
     } break;
     case DLL_PROCESS_DETACH: {
     } break;

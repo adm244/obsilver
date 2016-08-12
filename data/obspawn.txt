@@ -1,1 +1,3 @@
 player.placeatme 0001E5EF
+player.placeatme 0001E5EF
+player.placeatme 0001E5EF

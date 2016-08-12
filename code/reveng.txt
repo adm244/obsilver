@@ -1,0 +1,11 @@
+0x0040F130 - main loop ?
+0x0040F197 - game window is active ?
+
+0x00404177 - DirectInput8Create
+
+0x0040F24A - ???
+call 0x0045A500 after
+
+0x0040F19D - ???, obse rewrites this
+jmp [E9 8E44C50F] after
+(JMP 10063630)

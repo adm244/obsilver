@@ -44,12 +44,12 @@
   <PropertyGroup>
     <_ProjectFileVersion>10.0.40219.1</_ProjectFileVersion>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(SolutionDir)..\..\bin\$(Configuration)\</OutDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(Configuration)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(SolutionDir)..\..\bin\$(Configuration)\</IntDir>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</LinkIncremental>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)..\..\bin\$(Configuration)\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(Configuration)\</IntDir>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
-    <PostBuildEventUseInBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</PostBuildEventUseInBuild>
+    <PostBuildEventUseInBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</PostBuildEventUseInBuild>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(ProjectName)</TargetName>
     <PostBuildEventUseInBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</PostBuildEventUseInBuild>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(ProjectName)</TargetName>
@@ -75,9 +75,9 @@
       <TargetMachine>MachineX86</TargetMachine>
     </Link>
     <PostBuildEvent>
-      <Message>Coping DLL and INI into OBSE plugins folder...</Message>
-      <Command>copy "$(SolutionDir)..\..\bin\$(Configuration)\obsilver.dll" "F:\games\steamapps\common\Oblivion\Data\OBSE\Plugins\"
-copy "$(SolutionDir)..\..\bin\obsilver.ini" "F:\games\steamapps\common\Oblivion\Data\OBSE\Plugins\"</Command>
+      <Message>Coping ObSilver data into Oblivion folder...</Message>
+      <Command>copy "$(SolutionDir)..\..\bin\$(Configuration)\obsilver.dll" "C:\Program Files (x86)\Steam\steamapps\common\Oblivion\Data\OBSE\Plugins"
+</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -100,9 +100,11 @@ copy "$(SolutionDir)..\..\bin\obsilver.ini" "F:\games\steamapps\common\Oblivion\
       <TargetMachine>MachineX86</TargetMachine>
     </Link>
     <PostBuildEvent>
-      <Message>Coping DLL and INI into OBSE plugins folder...</Message>
+      <Message>Coping ObSilver data into Oblivion folder...</Message>
       <Command>copy "$(SolutionDir)..\..\bin\$(Configuration)\obsilver.dll" "C:\Program Files (x86)\Steam\steamapps\common\Oblivion\Data\OBSE\Plugins"
-copy "$(SolutionDir)..\..\bin\obsilver.ini" "C:\Program Files (x86)\Steam\steamapps\common\Oblivion\Data\OBSE\Plugins"</Command>
+
+copy "$(SolutionDir)..\..\bin\obsilver.ini" "C:\Program Files (x86)\Steam\steamapps\common\Oblivion\Data\OBSE\Plugins"
+copy "$(SolutionDir)..\..\data" "C:\Program Files (x86)\Steam\steamapps\common\Oblivion"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

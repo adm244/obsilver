@@ -27,9 +27,23 @@ OTHER DEALINGS IN THE SOFTWARE.
 */
 
 //FIX(adm244): replace std::string with c_string
+//FIX(adm244): (DONE) move message of command activation above the RunScriptLine(..)
 
-//TODO(adm244): implement cooldown system (by timer or activations count)
-//TODO(adm244): implement a set chance for each command to activate
+//TODO(adm244): (PARTIALLY DONE) disable QueueUIMessage_2 for the time RunScriptLine(..) is executing
+// will prevent UI messages from bloating the message queue and will fix sound distortions
+// look for QueueUIMessage_2 address and maybe patch this funtion so we could disable it
+//NOTE(adm244): suppressed messages but not sound distortions
+
+//TODO(adm244): hack around the rutony chat bug that allows to activate all commands at once
+// a simple check if GetKeyPressed for all batches is active should do the trick
+// OR block the execution if half of the batch files are activated on the same frame
+
+//TODO(adm244): (SOUND ONLY DONE) attach sound and texture(maybe) to the message of command activation
+//TODO(adm244): groups of commands and cooldown on the groups instead of individual commands
+// preserve the ability to set cooldowns on each commands (no grouping)
+
+//TODO(adm244): (TIMER ONLY DONE) implement cooldown system (by timer or activations count)
+//TODO(adm244): implement a set chance for each command to activate?
 
 #include <string>
 #include <windows.h>
@@ -52,9 +66,10 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 struct BatchData{
   char filename[MAX_FILENAME];
-  int key;
+  int keycode;
+  int timeout;
+  bool allowed;
   bool enabled;
-  bool timeouted;
 };
 
 internal HMODULE g_hModule = NULL;
@@ -70,6 +85,8 @@ internal OBSEArrayVarInterface *g_ArrayVarInterface = NULL;
 //NOTE(adm244): addresses for hooks (oblivion 1.2.416)
 internal const UInt32 mainloop_hook_patch_address = 0x0040F1A3;
 internal const UInt32 mainloop_hook_return_address = 0x0040F1A8;
+internal const UInt32 showuimessage_patch_address = 0x0057ACC0;
+internal const UInt32 showuimessage_2_patch_address = 0x0057ADD0;
 
 internal BatchData batches[MAX_BATCHES];
 internal int batchnum;
@@ -117,11 +134,18 @@ bool InitBatchFiles(BatchData *batches, int *num)
   char *str = buf;
   int index = 0;
 
+  /*char *curstr = str;
+  char *p = NULL;
+  char *endptr;*/
+
   IniReadSection(CONFIGFILE, "batch", buf, MAX_SECTION);
 
+  //FIX(adm244): very naive parser implementation, do error checks
   _MESSAGE("Loading batch files...");
-
   while( true ){
+    /*
+      oblvlup=0x23,180\0obgold=0x2E,60\0
+    */
     char *p = strrchr(str, '=');
 
     if( p && (index < MAX_BATCHES) ){
@@ -129,11 +153,17 @@ bool InitBatchFiles(BatchData *batches, int *num)
       *p++ = '\0';
 
       strcpy(batches[index].filename, str);
-      batches[index].key = (int)strtol(p, &endptr, 0);
-      batches[index].enabled = true;
-      batches[index].timeouted = false;
+      batches[index].keycode = (int)strtol(p, &endptr, 0);
 
-      _MESSAGE("%s activates with 0x%02X", batches[index].filename, batches[index].key);
+      p = strchr(p, ',');
+      *p++ = '\0';
+
+      batches[index].timeout = (int)strtol(p, &endptr, 0);
+
+      batches[index].allowed = true;
+      batches[index].enabled = true;
+
+      _MESSAGE("%s activates with 0x%02X, timeout for %d ms", batches[index].filename, batches[index].keycode, batches[index].timeout);
 
       str = strchr(p, '\0');
       str++;
@@ -143,6 +173,7 @@ bool InitBatchFiles(BatchData *batches, int *num)
       break;
     }
   }
+  _MESSAGE("OK");
 
   *num = index;
   return(index > 0);
@@ -151,12 +182,41 @@ bool InitBatchFiles(BatchData *batches, int *num)
 VOID CALLBACK timer_callback(PVOID lpParam, BOOLEAN TimerOrWaitFired)
 {
   BatchData *data = (BatchData *)lpParam;
-  
-  data->timeouted = false;
-  
+
+  data->enabled = true;
+
   char msg[MAX_STRING];
   sprintf(msg, "!%s enabled", data->filename);
   QueueUIMessage_2(msg, 5, NULL, NULL);
+}
+
+//NOTE(adm244): enables\disables any ui messages that shows up on top-left of the screen
+//NOTE(adm244): it doesn't disable some sounds (skill increase messages would still have sound played)
+//NOTE(adm244): need to be very careful since obse can patch this address as well
+// suppress = true - disables ui messages
+// suppress = false - enables ui messages
+void SuppressUIMessages(bool suppress)
+{
+  //NOTE(adm244): oblivion 1.2.416
+  // QUIMsg_2PatchAddr = 0x0057ADD0
+  // Original instruction: 0xD9EE (fldz - (fpu x87) load +0.0)
+  // Patch: 0xC390 (ret, nop)
+  //
+  // QUIMsg_PatchAddr = 0x0057ACC0
+  // Original instruction: 0x51 (push eax)
+  // Patch: 0xC3 (ret)
+
+  //IMPORTANT(adm244): looks like SafeWrite16(..) is all messed up
+  // it writes the highest byte twice instead of two bytes as it should
+  if( suppress ){
+    SafeWrite8(showuimessage_patch_address, 0xC3);
+    SafeWrite8(showuimessage_2_patch_address, 0xC3);
+    SafeWrite8(showuimessage_2_patch_address + 1, 0x90);
+  } else{
+    SafeWrite8(showuimessage_patch_address, 0x51);
+    SafeWrite8(showuimessage_2_patch_address, 0xD9);
+    SafeWrite8(showuimessage_2_patch_address + 1, 0xEE);
+  }
 }
 
 //NOTE(adm244): initializes plugin data
@@ -177,7 +237,7 @@ bool main_init()
   keys_active = true;
   key_disable = IniReadInt(CONFIGFILE, "keys", "iKeyToggle", 0x24);
 
-  return(TRUE);
+  return(true);
 }
 
 //NOTE(adm244): "oblivion" calls this function every frame if window is active
@@ -197,25 +257,30 @@ static void mainloop()
 
     if( keys_active ){
       for( int i = 0; i < batchnum; ++i ){
-        if( !batches[i].timeouted && GetKeyPressed(batches[i].key) ){
-          if( !batches[i].enabled ){
+        if( batches[i].enabled && GetKeyPressed(batches[i].keycode) ){
+          if( !batches[i].allowed ){
             continue;
           }
+          batches[i].allowed = false;
+
           batches[i].enabled = false;
-          batches[i].timeouted = true;
-          
-          CreateTimerQueueTimer(&g_Timer, g_TimerQueue, (WAITORTIMERCALLBACK)timer_callback, &batches[i], 180000, 0, 0);
+          CreateTimerQueueTimer(&g_Timer, g_TimerQueue, (WAITORTIMERCALLBACK)timer_callback,
+                                &batches[i], batches[i].timeout * 1000, 0, 0);
+
+          char msg[MAX_STRING];
+          sprintf(msg, "!%s activated. Timeout for %d seconds.", batches[i].filename, batches[i].timeout);
+          //TODO(adm244): load sound string from ini file
+          QueueUIMessage_2(msg, 5, NULL, "UIQuestUpdate");
+          _MESSAGE(msg);
 
           char str[MAX_STRING];
           sprintf(str, "RunBatchScript \"%s.txt\"\0", batches[i].filename);
-          g_ConsoleInterface->RunScriptLine(str);
 
-          char msg[MAX_STRING];
-          sprintf(msg, "!%s activated. Timeout for 3 minutes.", batches[i].filename);
-          QueueUIMessage_2(msg, 5, NULL, NULL);
-          _MESSAGE(msg);
+          SuppressUIMessages(true);
+          g_ConsoleInterface->RunScriptLine(str);
+          SuppressUIMessages(false);
         } else{
-          batches[i].enabled = true;
+          batches[i].allowed = true;
         }
       }
     }
@@ -230,11 +295,11 @@ static __declspec(naked) void mainloop_hook()
     pushad
     call mainloop
     popad
-    
+
     //NOTE(adm244): original instructions
     mov ecx, [eax]
     mov edx, [ecx + 0x0C]
-    
+
     jmp [mainloop_hook_return_address]
   }
 }
@@ -260,7 +325,7 @@ void MessageHandler(OBSEMessagingInterface::Message* msg)
         QueueUIMessage_2(msg, 3, NULL, NULL);
 
         sprintf(msg, "[INFO] %d batch files initialized", batchnum);
-        QueueUIMessage_2(msg, 5, NULL, NULL);
+        QueueUIMessage_2(msg, 3, NULL, NULL);
 
         not_initialized = false;
       }

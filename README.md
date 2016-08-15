@@ -5,6 +5,7 @@
 ### Change Log: ###
 
 - Added: Groups of commands support (draft version, it's working but will be rewritten)
+- Hotfix: No need to specify an index for a group anymore
 - (ver 0.3) Added: Simple timeouts implemented for each command
 - (ver 0.3) Added: Sound for a message about a command activation
 - (ver 0.3) Fixed: Suppresses messages during command execution (those at the top-left courner of the screen)

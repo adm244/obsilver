@@ -62,7 +62,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #define MAX_SECTION 32767
 #define MAX_FILENAME 128
 #define MAX_BATCHES 30
-#define MAX_GROUPES 30
+#define MAX_GROUPS 30
 #define MAX_STRING 255
 
 struct BatchGroup{
@@ -97,7 +97,7 @@ internal const UInt32 mainloop_hook_return_address = 0x0040F1A8;
 internal const UInt32 showuimessage_patch_address = 0x0057ACC0;
 internal const UInt32 showuimessage_2_patch_address = 0x0057ADD0;
 
-internal BatchGroup groups[MAX_GROUPES];
+internal BatchGroup groups[MAX_GROUPS];
 internal BatchData batches[MAX_BATCHES];
 internal int batchnum;
 
@@ -141,40 +141,37 @@ void ParseGroupData(char *groupname, BatchData *batch)
 {
   char buf[MAX_SECTION];
   char *str = buf;
-  int index;
+  int index = 0;
   
   IniReadSection(CONFIGFILE, "groups", buf, MAX_SECTION);
   
   //_MESSAGE("Parsing group...");
   while( true ){
     /*
-      summon=0,60\0help=1,30\0
+      summon=60\0help=30\0
     */
     
     char *p = strrchr(str, '=');
-    if( p ){
+    if( p && (index < MAX_GROUPS) ){
       char *endptr;
       *p++ = '\0';
       
       if( !strcmp(groupname, str) ){
-        index = (int)strtol(p, &endptr, 10);
-        
-        p = strchr(p, ',');
-        *p++ = '\0';
-        
         strcpy(groups[index].name, groupname);
         groups[index].timeout = (int)strtol(p, &endptr, 10);
         groups[index].enabled = true;
         
         batch->group = &groups[index];
         
-        _MESSAGE("\"%s\" is in group \"%s\" with timeout %d seconds", batch->filename, batch->group->name, groups[index].timeout);
+        _MESSAGE("\"%s\" activates with 0x%02X is in group \"%s\" with timeout %d seconds", batch->filename, batch->keycode, batch->group->name, groups[index].timeout);
         
         break;
       }
       
       str = strchr(p, '\0');
       str++;
+      
+      index++;
     } else{
       break;
     }
@@ -225,7 +222,7 @@ bool InitBatchFiles(BatchData *batches, int *num)
         ParseGroupData(p, &batches[index]);
       } else{
         batches[index].group = NULL;
-        _MESSAGE("%s activates with 0x%02X, timeout for %d seconds", batches[index].filename, batches[index].keycode, batches[index].timeout);
+        _MESSAGE("\"%s\" activates with 0x%02X, timeout for %d seconds", batches[index].filename, batches[index].keycode, batches[index].timeout);
       }
 
       batches[index].allowed = true;
@@ -346,7 +343,7 @@ static void mainloop()
             CreateTimerQueueTimer(&g_Timer, g_TimerQueue, (WAITORTIMERCALLBACK)timer_callback,
                                   &batches[i], batches[i].group->timeout * 1000, 0, 0);
             
-            sprintf(msg, "!%s activated. Timeout on group %s for %d seconds.", batches[i].filename, batches[i].group->name, batches[i].group->timeout);
+            sprintf(msg, "!%s activated. Timeout on group \"%s\" for %d seconds.", batches[i].filename, batches[i].group->name, batches[i].group->timeout);
           } else{
             batches[i].enabled = false;
             CreateTimerQueueTimer(&g_Timer, g_TimerQueue, (WAITORTIMERCALLBACK)timer_callback,

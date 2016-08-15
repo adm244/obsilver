@@ -1,0 +1,3 @@
+player.placeatme 0001FCB1
+player.placeatme 0001FCB1
+player.placeatme 0001FCB1

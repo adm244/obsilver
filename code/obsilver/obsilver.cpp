@@ -62,9 +62,18 @@ OTHER DEALINGS IN THE SOFTWARE.
 #define MAX_SECTION 32767
 #define MAX_FILENAME 128
 #define MAX_BATCHES 30
+#define MAX_GROUPES 30
 #define MAX_STRING 255
 
+struct BatchGroup{
+  char name[MAX_STRING];
+  int timeout;
+  bool enabled;
+};
+
 struct BatchData{
+  BatchGroup *group;
+  
   char filename[MAX_FILENAME];
   int keycode;
   int timeout;
@@ -88,6 +97,7 @@ internal const UInt32 mainloop_hook_return_address = 0x0040F1A8;
 internal const UInt32 showuimessage_patch_address = 0x0057ACC0;
 internal const UInt32 showuimessage_2_patch_address = 0x0057ADD0;
 
+internal BatchGroup groups[MAX_GROUPES];
 internal BatchData batches[MAX_BATCHES];
 internal int batchnum;
 
@@ -127,6 +137,51 @@ int IniReadSection(char *inifile, char *section, char *buffer, int bufsize)
   return GetPrivateProfileSectionA(section, buffer, bufsize, fname.c_str());
 }
 
+void ParseGroupData(char *groupname, BatchData *batch)
+{
+  char buf[MAX_SECTION];
+  char *str = buf;
+  int index;
+  
+  IniReadSection(CONFIGFILE, "groups", buf, MAX_SECTION);
+  
+  //_MESSAGE("Parsing group...");
+  while( true ){
+    /*
+      summon=0,60\0help=1,30\0
+    */
+    
+    char *p = strrchr(str, '=');
+    if( p ){
+      char *endptr;
+      *p++ = '\0';
+      
+      if( !strcmp(groupname, str) ){
+        index = (int)strtol(p, &endptr, 10);
+        
+        p = strchr(p, ',');
+        *p++ = '\0';
+        
+        strcpy(groups[index].name, groupname);
+        groups[index].timeout = (int)strtol(p, &endptr, 10);
+        groups[index].enabled = true;
+        
+        batch->group = &groups[index];
+        
+        _MESSAGE("\"%s\" is in group \"%s\" with timeout %d seconds", batch->filename, batch->group->name, groups[index].timeout);
+        
+        break;
+      }
+      
+      str = strchr(p, '\0');
+      str++;
+    } else{
+      break;
+    }
+  }
+  //_MESSAGE("OK");
+}
+
 //NOTE(adm244): loads a list of batch files and keys that activate them
 bool InitBatchFiles(BatchData *batches, int *num)
 {
@@ -158,12 +213,23 @@ bool InitBatchFiles(BatchData *batches, int *num)
       p = strchr(p, ',');
       *p++ = '\0';
 
-      batches[index].timeout = (int)strtol(p, &endptr, 0);
+      batches[index].timeout = (int)strtol(p, &endptr, 10);
+      
+      if( batches[index].timeout == 0 ){
+        //char groupname[MAX_STRING];
+        
+        p = strchr(p, ',');
+        *p++ = '\0';
+        
+        //strcpy(groupname, p);
+        ParseGroupData(p, &batches[index]);
+      } else{
+        batches[index].group = NULL;
+        _MESSAGE("%s activates with 0x%02X, timeout for %d seconds", batches[index].filename, batches[index].keycode, batches[index].timeout);
+      }
 
       batches[index].allowed = true;
       batches[index].enabled = true;
-
-      _MESSAGE("%s activates with 0x%02X, timeout for %d ms", batches[index].filename, batches[index].keycode, batches[index].timeout);
 
       str = strchr(p, '\0');
       str++;
@@ -182,11 +248,16 @@ bool InitBatchFiles(BatchData *batches, int *num)
 VOID CALLBACK timer_callback(PVOID lpParam, BOOLEAN TimerOrWaitFired)
 {
   BatchData *data = (BatchData *)lpParam;
-
-  data->enabled = true;
-
   char msg[MAX_STRING];
-  sprintf(msg, "!%s enabled", data->filename);
+  
+  if( data->group ){
+    data->group->enabled = true;
+    sprintf(msg, "%s group enabled", data->group->name);
+  } else{
+    data->enabled = true;
+    sprintf(msg, "!%s enabled", data->filename);
+  }
+
   QueueUIMessage_2(msg, 5, NULL, NULL);
 }
 
@@ -244,6 +315,7 @@ bool main_init()
 static void mainloop()
 {
   if( main_loop_running ){
+    //FIX(adm244): add a key press guard here
     if( GetKeyPressed(key_disable) ){
       if( keys_active ){
         QueueUIMessage_2("[INFO] Commands disabled", 5, NULL, NULL);
@@ -262,13 +334,27 @@ static void mainloop()
             continue;
           }
           batches[i].allowed = false;
-
-          batches[i].enabled = false;
-          CreateTimerQueueTimer(&g_Timer, g_TimerQueue, (WAITORTIMERCALLBACK)timer_callback,
-                                &batches[i], batches[i].timeout * 1000, 0, 0);
-
+          
+          
           char msg[MAX_STRING];
-          sprintf(msg, "!%s activated. Timeout for %d seconds.", batches[i].filename, batches[i].timeout);
+          if( batches[i].group ){
+            if( !batches[i].group->enabled ){
+              continue;
+            }
+            
+            batches[i].group->enabled = false;
+            CreateTimerQueueTimer(&g_Timer, g_TimerQueue, (WAITORTIMERCALLBACK)timer_callback,
+                                  &batches[i], batches[i].group->timeout * 1000, 0, 0);
+            
+            sprintf(msg, "!%s activated. Timeout on group %s for %d seconds.", batches[i].filename, batches[i].group->name, batches[i].group->timeout);
+          } else{
+            batches[i].enabled = false;
+            CreateTimerQueueTimer(&g_Timer, g_TimerQueue, (WAITORTIMERCALLBACK)timer_callback,
+                                  &batches[i], batches[i].timeout * 1000, 0, 0);
+
+            sprintf(msg, "!%s activated. Timeout for %d seconds.", batches[i].filename, batches[i].timeout);
+          }
+          
           //TODO(adm244): load sound string from ini file
           QueueUIMessage_2(msg, 5, NULL, "UIQuestUpdate");
           _MESSAGE(msg);

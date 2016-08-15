@@ -1,12 +1,13 @@
 ##ObSilver for Oblivion##
 
-**Current version: 0.3**
+**Current version: 0.4**
 
-### New: ###
+### Change Log: ###
 
-- Added: Simple timeouts implemented for each command
-- Added: Sound for message about a bat file activation
-- Fixed: Suppresses messages during bat files (those at the top-left courner of the screen)
+- Added: Groups of commands support (draft version, it's working but will be rewritten)
+- (ver 0.3) Added: Simple timeouts implemented for each command
+- (ver 0.3) Added: Sound for a message about a command activation
+- (ver 0.3) Fixed: Suppresses messages during command execution (those at the top-left courner of the screen)
 - (ver 0.2) **MAJOR**: Oblivion crash should be fixed now
 
 ### Description: ###
@@ -16,8 +17,8 @@ This plugin lets you bind your oblivion bat files to a specific keys on a keyboa
 ### Todo: ###
 
 - Workaround the rutony chat bug that allows to activate all commands at once
-- Implement groups and apply timeouts for all commands in the group
 
 ### Known Bugs: ###
 
+- Commands toggle button does not have a key press guard (key presses registering every single frame the key was pressed)
 - If there's something wrong with the fields in *.ini file, we're screwed

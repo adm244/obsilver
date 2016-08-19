@@ -1,0 +1,148 @@
+;--------------------------
+#define MAX_FIELDS 2 // object fields count
+#define MAX_OBJECTS 30 // commands\groups count
+#define MAX_GROUPS 2 // groups count
+
+struct value{
+  unsigned int start;
+  unsigned int end;
+};
+
+struct field{
+  struct value name;
+  struct value value;
+};
+
+struct object{
+  struct value name;
+  struct field fields[MAX_FIELDS];
+  unsigned int size; // how many fields are in this object
+};
+
+struct group{
+  struct value name;
+  struct object objects[MAX_OBJECTS];
+  unsigned int size; // how many objects are in this group
+};
+
+struct group groups[MAX_GROUPS];
+
+// src - string to parse
+// group_list - array of available groups (so we ignore all the unknows ones)
+// returns how many sybols were parsed
+int parse(const char *src, const char group_list[]);
+
+// dest - place to store parsed string
+// val - pointer to value structure to parse string from
+// returns length of the parsed string
+// (null terminated)
+int parse_string(char *dest, struct value *val);
+
+// dest - place to store parsed integer
+// val - pointer to value structure to parse integer from
+// returns 0 if no error occured or index of the unknows symbol that stopped parsing
+int parse_integer(int *dest, struct value *val);
+;--------------------------
+
+#define MAX_STRING 255
+#define MAX_BATCHES 30
+
+...
+
+struct BatchData{
+  char filename[MAX_STRING];
+  int keycode;
+  int timeout;
+  struct GroupData *group;
+};
+
+BatchData batches[MAX_BATCHES];
+
+int toggle_key;
+int skygeddon_key;
+
+...
+
+char *grouplist = {"settings", "commands", "groups"};
+parse(str, grouplist);
+
+...
+
+int i = 0;
+char buf[MAX_STRING]
+
+// going through all of the groups
+for( ; i < MAX_GROUPS; ++i ){
+  int size = parse_string(buf, groups[i].name);
+  
+  if( !strncmp(buf, "settings", size) ){
+    int j = 0;
+    
+    // going through all of the objects of the group
+    for( ; j < groups[i].size; ++j ){
+      char *objname;
+      int objnamesize = parse_string(objname, groups[i].objects[j].name);
+      
+      if( !strncmp(objname, "keys", objnamesize) ){
+        int k = 0;
+        
+        // going through all of the fields of the object
+        for( ; k < groups[i].objects[j].size; ++k ){
+          char *fieldname;
+          int fieldnamesize = parse_string(fieldname, groups[i].objects[j].fields[k].name);
+          
+          if( !strncmp(fieldname, "toggle", fieldnamesize) ){
+            int error_symbol = parse_integer(&toggle_key, groups[i].objects[i].fields[k].value);
+            if( error_symbol > 0 ){
+              // cannot parse integer value, display error
+            }
+          } else if( !strncmp(fieldname, "skygeddon", fieldnamesize) ){
+            int error_symbol = parse_integer(&skygeddon, groups[i].objects[i].fields[k].value);
+            if( error_symbol > 0 ){
+              // cannot parse integer value, display error
+            }
+          }
+        } // #fields
+      } // #keys
+    }
+  } else if( !strncmp(buf, "commands", size) ){
+    // group "commands" ...
+  } else if( !strncmp(buf, "groups", size) ){
+    // group "groups" ...
+  } else{
+    // unknown group, ignore
+  }
+}
+
+;--------------------------
+settings {
+  "keys" {
+    toggle: "0x24"
+    skygeddon: "0x20"
+    
+    ...
+  }
+}
+
+commands {
+  "file name" {
+    key: "0x23"
+    group: "Group Name"
+  }
+
+  "filename2" {
+    key: "0x2D"
+    timeout: "15"
+  }
+  
+  ...
+}
+
+groups {
+  "Group Name" {
+    timeout: "60"
+  }
+  
+  ...
+}
+;--------------------------

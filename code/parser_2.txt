@@ -1,0 +1,50 @@
+
+enum token_type{
+  TOKEN_GROUP = 0,
+  TOKEN_OBJECT,
+  TOKEN_FIELD,
+  TOKEN_VALUE
+};
+
+struct token{
+  int type;
+  int start;
+  int end;
+};
+
+// -----------------------------
+
+parser as a state machine?
+
+//------------------------------
+settings {
+  "keys" {
+    toggle: "0x24"
+    skygeddon: "0x20"
+    
+    ...
+  }
+}
+
+commands {
+  "file name" {
+    key: "0x23"
+    group: "Group Name"
+  }
+
+  "filename2" {
+    key: "0x2D"
+    timeout: "15"
+  }
+  
+  ...
+}
+
+groups {
+  "Group Name" {
+    timeout: "60"
+  }
+  
+  ...
+}
+//------------------------------

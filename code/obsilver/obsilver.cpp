@@ -26,6 +26,8 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 */
 
+//IMPORTANT(adm244): rewrite the damn parser already!
+
 //FIX(adm244): replace std::string with c_string
 //FIX(adm244): (DONE) move message of command activation above the RunScriptLine(..)
 
@@ -37,6 +39,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 //TODO(adm244): hack around the rutony chat bug that allows to activate all commands at once
 // a simple check if GetKeyPressed for all batches is active should do the trick
 // OR block the execution if half of the batch files are activated on the same frame
+//NOTE(adm244): easy to break since user can configure plugin to work with many groups of batches
 
 //TODO(adm244): (SOUND ONLY DONE) attach sound and texture(maybe) to the message of command activation
 //TODO(adm244): groups of commands and cooldown on the groups instead of individual commands
@@ -193,6 +196,7 @@ bool InitBatchFiles(BatchData *batches, int *num)
   IniReadSection(CONFIGFILE, "batch", buf, MAX_SECTION);
 
   //FIX(adm244): very naive parser implementation, do error checks
+  //IMPORTANT(adm244): rewrite the whole parser!
   _MESSAGE("Loading batch files...");
   while( true ){
     /*
@@ -275,7 +279,8 @@ void SuppressUIMessages(bool suppress)
   // Patch: 0xC3 (ret)
 
   //IMPORTANT(adm244): looks like SafeWrite16(..) is all messed up
-  // it writes the highest byte twice instead of two bytes as it should
+  // it writes the highest byte twice instead of two bytes as it should.
+  // am I missing something here?
   if( suppress ){
     SafeWrite8(showuimessage_patch_address, 0xC3);
     SafeWrite8(showuimessage_2_patch_address, 0xC3);
@@ -313,6 +318,7 @@ static void mainloop()
 {
   if( main_loop_running ){
     //FIX(adm244): add a key press guard here
+    // (just copy the damn thing from skysilver)
     if( GetKeyPressed(key_disable) ){
       if( keys_active ){
         QueueUIMessage_2("[INFO] Commands disabled", 5, NULL, NULL);
